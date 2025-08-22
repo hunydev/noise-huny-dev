@@ -40,8 +40,9 @@ export function encodeWav16bitPCM(samples: Float32Array, sampleRate: number): Ui
 }
 
 export function downloadWav(bytes: Uint8Array, filename: string) {
-  // Ensure Blob receives an ArrayBuffer (not ArrayBufferLike) and respects view offset/length
-  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  // Ensure Blob receives a plain ArrayBuffer, not (ArrayBuffer | SharedArrayBuffer)
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
   const blob = new Blob([ab], { type: 'audio/wav' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
