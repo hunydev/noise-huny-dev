@@ -428,16 +428,60 @@ export default function EndpointConstrainedNoiseApp() {
   }
 
   // Upload & merge helpers
+  function sniffWavSampleRate(buf: ArrayBuffer): number | null {
+    if (buf.byteLength < 32) return null;
+    const dv = new DataView(buf);
+    // 'RIFF' and 'WAVE'
+    if (dv.getUint32(0, false) !== 0x52494646) return null;
+    if (dv.getUint32(8, false) !== 0x57415645) return null;
+    // Find 'fmt ' chunk and read sampleRate at offset +12 (LE)
+    let p = 12;
+    while (p + 8 <= dv.byteLength) {
+      const id = dv.getUint32(p, false);
+      const size = dv.getUint32(p + 4, true);
+      if (id === 0x666d7420) { // 'fmt '
+        if (p + 8 + size >= p + 16) {
+          const sr = dv.getUint32(p + 12, true);
+          return sr || null;
+        }
+        break;
+      }
+      p += 8 + size;
+    }
+    return null;
+  }
   async function handleUploadFile(file: File) {
-    ensureAudioCtx();
     const buf = await file.arrayBuffer();
-    const ctx = audioCtxRef.current!;
-    const audioBuf: AudioBuffer = await ctx.decodeAudioData(buf);
+    let audioBuf: AudioBuffer | null = null;
+    // Try to decode using a context configured to the file's SR (for WAV)
+    const wavSr = sniffWavSampleRate(buf);
+    if (wavSr && Number.isFinite(wavSr)) {
+      try {
+        const OfflineCtor = (window as any).OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+        const off = new OfflineCtor(1, 1, wavSr) as OfflineAudioContext;
+        audioBuf = await off.decodeAudioData(buf.slice(0));
+      } catch {
+        audioBuf = null;
+      }
+    }
+    if (!audioBuf) {
+      // Fallback: decode on the main context (may resample to its SR)
+      if (!audioCtxRef.current) {
+        const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const ctx = new Ctor() as AudioContext;
+        const gain = ctx.createGain();
+        gain.connect(ctx.destination);
+        audioCtxRef.current = ctx;
+        gainNodeRef.current = gain;
+      }
+      audioBuf = await audioCtxRef.current.decodeAudioData(buf.slice(0));
+    }
     setUploaded({ buffer: audioBuf, name: file.name });
     setUploadInfo({ sampleRate: audioBuf.sampleRate, channels: audioBuf.numberOfChannels, length: audioBuf.length, durationSec: audioBuf.length / audioBuf.sampleRate });
     if (mergedUrl) { URL.revokeObjectURL(mergedUrl); setMergedUrl(""); setMergedName(""); }
   }
 
+// ... (rest of the code remains the same)
   function downmixToMono(buffer: AudioBuffer): Float32Array {
     const C = buffer.numberOfChannels;
     const L = buffer.length;
