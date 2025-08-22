@@ -291,6 +291,13 @@ export default function EndpointConstrainedNoiseApp() {
   const [playing, setPlaying] = useState<boolean>(false);
   const [loop, setLoop] = useState<boolean>(false);
 
+  // Upload & merge
+  const [uploaded, setUploaded] = useState<{ buffer: AudioBuffer; name: string } | null>(null);
+  const [uploadInfo, setUploadInfo] = useState<{ sampleRate: number; channels: number; length: number; durationSec: number } | null>(null);
+  const [insertPos, setInsertPos] = useState<'front' | 'back'>('back');
+  const [mergedUrl, setMergedUrl] = useState<string>("");
+  const [mergedName, setMergedName] = useState<string>("");
+
   // Download URLs
   const [wavUrl, setWavUrl] = useState<string>("");
   const [wavName, setWavName] = useState<string>("");
@@ -336,6 +343,11 @@ export default function EndpointConstrainedNoiseApp() {
     if (wavUrl) URL.revokeObjectURL(wavUrl);
     if (pcmUrl) URL.revokeObjectURL(pcmUrl);
   }, [wavUrl, pcmUrl]);
+
+  // Revoke merged URL on change/unmount
+  useEffect(() => () => {
+    if (mergedUrl) URL.revokeObjectURL(mergedUrl);
+  }, [mergedUrl]);
 
   const effectiveN = useMemo(() => {
     if (mode === 'time') return Math.max(2, Math.round((sampleRate * ms) / 1000));
@@ -415,6 +427,57 @@ export default function EndpointConstrainedNoiseApp() {
     }
   }
 
+  // Upload & merge helpers
+  async function handleUploadFile(file: File) {
+    ensureAudioCtx();
+    const buf = await file.arrayBuffer();
+    const ctx = audioCtxRef.current!;
+    const audioBuf: AudioBuffer = await ctx.decodeAudioData(buf);
+    setUploaded({ buffer: audioBuf, name: file.name });
+    setUploadInfo({ sampleRate: audioBuf.sampleRate, channels: audioBuf.numberOfChannels, length: audioBuf.length, durationSec: audioBuf.length / audioBuf.sampleRate });
+    if (mergedUrl) { URL.revokeObjectURL(mergedUrl); setMergedUrl(""); setMergedName(""); }
+  }
+
+  function downmixToMono(buffer: AudioBuffer): Float32Array {
+    const C = buffer.numberOfChannels;
+    const L = buffer.length;
+    const out = new Float32Array(L);
+    const tmp = new Float32Array(L);
+    for (let ch = 0; ch < C; ch++) {
+      buffer.copyFromChannel(tmp, ch);
+      for (let i = 0; i < L; i++) out[i] += tmp[i];
+    }
+    if (C > 1) {
+      const g = 1 / C;
+      for (let i = 0; i < L; i++) out[i] *= g;
+    }
+    return out;
+  }
+
+  function concatFloat32(a: Float32Array, b: Float32Array): Float32Array {
+    const out = new Float32Array(a.length + b.length);
+    out.set(a, 0);
+    out.set(b, a.length);
+    return out;
+  }
+
+  function appendNoiseToAudio() {
+    if (!uploaded) return;
+    const buf = uploaded.buffer;
+    const sr = buf.sampleRate;
+    const Nnoise = mode === 'time' ? Math.max(2, Math.round((sr * ms) / 1000)) : Math.max(2, Number(samplesN) | 0);
+    const noise = generateNoise({ N: Nnoise, rmsDBFS: Number(rmsDBFS), softenEdges, seed });
+    const mono = downmixToMono(buf);
+    const combined = insertPos === 'front' ? concatFloat32(noise, mono) : concatFloat32(mono, noise);
+    if (mergedUrl) URL.revokeObjectURL(mergedUrl);
+    const blob = makeWavBlob({ samples: combined, sampleRate: sr });
+    const url = URL.createObjectURL(blob);
+    const posStr = insertPos === 'front' ? 'front' : 'back';
+    const baseName = uploaded.name.replace(/\.[^/.]+$/, '');
+    setMergedUrl(url);
+    setMergedName(`${baseName}_with_noise_${posStr}_${sr}Hz.wav`);
+  }
+
   function runTests() {
     const res = runSelfTests();
     setTests(res);
@@ -425,7 +488,7 @@ export default function EndpointConstrainedNoiseApp() {
       <div className="max-w-4xl mx-auto space-y-4">
         <header className="flex items-center justify-between">
           <h1 className="text-xl md:text-2xl font-semibold">Endpoint-Constrained White Noise Generator</h1>
-          <div className="text-xs text-slate-400">TTS 무음 대체용 화이트노이즈 (시작/끝=0)</div>
+          <div className="text-xs text-slate-400">Audio 무음 대체용 화이트노이즈 (시작/끝=0)</div>
         </header>
 
         <section className="grid md:grid-cols-2 gap-4">
@@ -590,8 +653,51 @@ export default function EndpointConstrainedNoiseApp() {
           </div>
         </section>
 
+        {/* Upload & Merge Section */}
+        <section className="mt-4 space-y-3 p-4 rounded-2xl bg-slate-900 shadow">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-slate-300">오디오에 화이트노이즈(묵음) 추가</div>
+            {uploadInfo && (
+              <div className="text-xs text-slate-500">
+                {uploadInfo.sampleRate} Hz · {uploadInfo.channels} ch · {uploadInfo.durationSec.toFixed(2)} s
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+            <input type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); }}
+              className="text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-700 file:text-slate-100 file:hover:bg-slate-600 file:cursor-pointer" />
+
+            <div className="flex items-center gap-4 text-xs text-slate-300">
+              <label className="inline-flex items-center gap-2">
+                <input type="radio" className="accent-sky-500" checked={insertPos === 'front'} onChange={() => setInsertPos('front')} /> 앞에 추가
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input type="radio" className="accent-sky-500" checked={insertPos === 'back'} onChange={() => setInsertPos('back')} /> 뒤에 추가
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button onClick={appendNoiseToAudio} disabled={!uploaded}
+              className="px-4 py-2 rounded-xl bg-purple-600 disabled:bg-slate-700 disabled:text-slate-400 text-white hover:bg-purple-500 active:bg-purple-700 transition">
+              노이즈 추가 후 WAV 다운로드
+            </button>
+            {mergedUrl && (
+              <a href={mergedUrl} download={mergedName} target="_blank" rel="noopener"
+                className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 active:bg-emerald-700 transition">
+                {mergedName || 'merged.wav'} 다운로드
+              </a>
+            )}
+          </div>
+
+          <p className="text-xs text-slate-500 leading-relaxed">
+            * 내보내기는 모노 16-bit PCM WAV로 저장됩니다. 브라우저 디코더의 샘플레이트(보통 48 kHz)가 적용될 수 있습니다.
+          </p>
+        </section>
+
         <footer className="text-xs text-slate-500 pt-2">
-          © {new Date().getFullYear()} — Endpoint-constrained noise for TTS padding. Mono, 16-bit PCM export.
+          © {new Date().getFullYear()} — Endpoint-constrained noise for Audio padding. Mono, 16-bit PCM export.
         </footer>
       </div>
     </div>

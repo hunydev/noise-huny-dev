@@ -96,7 +96,7 @@ export default function App() {
   return (
     <div className="container">
       <h1>Endpoint-Constrained White Noise</h1>
-      <p className="small">TTS 묵음 구간 대체용, 정확한 샘플수와 무클릭(clickless) 시작/종료를 위한 화이트 노이즈 생성기</p>
+      <p className="small">Audio 묵음 구간 대체용, 정확한 샘플수와 무클릭(clickless) 시작/종료를 위한 화이트 노이즈 생성기</p>
 
       <section>
         <div className="grid-3">
@@ -188,7 +188,7 @@ export default function App() {
         <ul>
           <li>엔드포인트 제약: 내부적으로 첫/마지막 샘플을 0으로 만들기 위해 랜덤 노이즈의 선형 성분을 제거합니다. 별도의 페이드/윈도우를 추가하지 않아도 클릭이 억제됩니다.</li>
           <li>RMS 정규화: 목표 dBFS(RMS)에 맞추어 전체 레벨을 스케일합니다. 너무 큰 값일 경우 자동으로 클리핑을 방지합니다.</li>
-          <li>정확한 샘플수: 원하는 샘플수를 그대로 출력하므로 TTS 프레임 경계에 정확히 맞출 수 있습니다.</li>
+          <li>정확한 샘플수: 원하는 샘플수를 그대로 출력하므로 오디오 프레임 경계에 정확히 맞출 수 있습니다.</li>
         </ul>
       </section>
 

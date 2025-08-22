@@ -436,7 +436,7 @@ export default function EndpointConstrainedNoiseApp() {
       <div className="max-w-4xl mx-auto space-y-4">
         <header className="flex items-center justify-between">
           <h1 className="text-xl md:text-2xl font-semibold">Endpoint-Constrained White Noise Generator</h1>
-          <div className="text-xs text-slate-400">TTS 무음 대체용 화이트노이즈 (시작/끝=0)</div>
+          <div className="text-xs text-slate-400">Audio 무음 대체용 화이트노이즈 (시작/끝=0)</div>
         </header>
 
         <section className="grid md:grid-cols-2 gap-4">
@@ -602,7 +602,7 @@ export default function EndpointConstrainedNoiseApp() {
         </section>
 
         <footer className="text-xs text-slate-500 pt-2">
-          © {new Date().getFullYear()} — Endpoint-constrained noise for TTS padding. Mono, 16-bit PCM export.
+          © {new Date().getFullYear()} — Endpoint-constrained noise for Audio padding. Mono, 16-bit PCM export.
         </footer>
       </div>
     </div>
