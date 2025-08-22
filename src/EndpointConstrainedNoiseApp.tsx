@@ -232,7 +232,7 @@ function runSelfTests(): TestResult[] {
   // T2: RMS close to target
   t("RMS(dBFS) ~= target (±0.5dB)", () => {
     const N = 48000;
-    const target = -70;
+    const target = -75;
     const y = generateNoise({ N, rmsDBFS: target, softenEdges: false, seed: 1 });
     let sum2 = 0; for (let i = 0; i < y.length; i++) sum2 += y[i] * y[i];
     const rms = Math.sqrt(sum2 / y.length);
@@ -243,8 +243,8 @@ function runSelfTests(): TestResult[] {
   // T3: deterministic seed
   t("Same seed -> same sequence", () => {
     const N = 257;
-    const y1 = generateNoise({ N, rmsDBFS: -70, softenEdges: true, seed: "abc" });
-    const y2 = generateNoise({ N, rmsDBFS: -70, softenEdges: true, seed: "abc" });
+    const y1 = generateNoise({ N, rmsDBFS: -75, softenEdges: true, seed: "abc" });
+    const y2 = generateNoise({ N, rmsDBFS: -75, softenEdges: true, seed: "abc" });
     for (let i = 0; i < N; i++) if (y1[i] !== y2[i]) throw new Error(`diff at ${i}`);
   });
 
@@ -274,7 +274,7 @@ export default function EndpointConstrainedNoiseApp() {
   const [mode, setMode] = useState<"time" | "samples">("time");
   const [ms, setMs] = useState<number>(200);
   const [samplesN, setSamplesN] = useState<number>(9600);
-  const [rmsDBFS, setRmsDBFS] = useState<number>(-70);
+  const [rmsDBFS, setRmsDBFS] = useState<number>(-75);
   const [softenEdges, setSoftenEdges] = useState<boolean>(true);
   const [normalizeView, setNormalizeView] = useState<boolean>(false);
   const [seed, setSeed] = useState<string>("");
@@ -677,7 +677,7 @@ export default function EndpointConstrainedNoiseApp() {
               </div>
 
               <p className="text-xs text-slate-500 leading-relaxed">
-                * 파형이 크게 보이는 경우 "파형 정규화 보기"가 켜져 있는지 확인하세요. 실제 파일 레벨은 RMS(dBFS) 수치에 따릅니다. 기본값은 -70 dBFS입니다.
+                * 파형이 크게 보이는 경우 "파형 정규화 보기"가 켜져 있는지 확인하세요. 실제 파일 레벨은 RMS(dBFS) 수치에 따릅니다. 기본값은 -75 dBFS입니다.
               </p>
             </div>
 
