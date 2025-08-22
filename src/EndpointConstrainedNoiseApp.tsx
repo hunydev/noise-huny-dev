@@ -141,12 +141,16 @@ function makeWavBlob({ samples, sampleRate }: { samples: Float32Array; sampleRat
   writeUint32(subchunk2Size);
 
   for (let i = 0; i < pcm.length; i++) { view.setInt16(offset, pcm[i], true); offset += 2; }
-  return new Blob([view], { type: "audio/wav" });
+  // TS 5.5+: BlobPart expects ArrayBuffer or ArrayBufferView<ArrayBuffer>.
+  // Provide ArrayBuffer to avoid generic mismatch (ArrayBufferLike vs ArrayBuffer).
+  return new Blob([buffer], { type: "audio/wav" });
 }
 
 function makeRawPCMBlob({ samples }: { samples: Float32Array }): Blob {
   const pcm = floatToPCM16(samples);
-  return new Blob([pcm], { type: "application/octet-stream" });
+  // Ensure ArrayBuffer is provided (slice guarantees ArrayBuffer type and exact length)
+  const ab = pcm.buffer.slice(0, pcm.byteLength);
+  return new Blob([ab], { type: "application/octet-stream" });
 }
 
 // ========== Waveform Drawing ==========
@@ -399,7 +403,8 @@ export default function EndpointConstrainedNoiseApp() {
     const gain = gainNodeRef.current!;
     if (playing) { stopPlayback(); return; }
     const buffer = ctx.createBuffer(1, generated.length, sampleRate);
-    buffer.copyToChannel(generated, 0);
+    // Avoid TS 5.5 typed array generic mismatch: use getChannelData().set(...)
+    buffer.getChannelData(0).set(generated);
     const src = ctx.createBufferSource();
     src.buffer = buffer; src.loop = loop; src.connect(gain);
     src.onended = () => setPlaying(false);

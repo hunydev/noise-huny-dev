@@ -62,7 +62,8 @@ export default function App() {
     }
 
     const buf = ctx.createBuffer(1, data.length, sampleRate);
-    buf.copyToChannel(data, 0);
+    // Use set() on channel data to avoid typed array generic mismatch in TS 5.5
+    buf.getChannelData(0).set(data);
 
     const src = ctx.createBufferSource();
     src.buffer = buf;
