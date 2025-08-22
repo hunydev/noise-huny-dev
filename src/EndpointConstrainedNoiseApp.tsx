@@ -141,15 +141,17 @@ function makeWavBlob({ samples, sampleRate }: { samples: Float32Array; sampleRat
   writeUint32(subchunk2Size);
 
   for (let i = 0; i < pcm.length; i++) { view.setInt16(offset, pcm[i], true); offset += 2; }
-  // TS 5.5+: BlobPart expects ArrayBuffer or ArrayBufferView<ArrayBuffer>.
-  // Provide ArrayBuffer to avoid generic mismatch (ArrayBufferLike vs ArrayBuffer).
-  return new Blob([buffer], { type: "audio/wav" });
+  // TS 5.5: Ensure Blob receives a plain ArrayBuffer (not possibly SharedArrayBuffer)
+  const ab2 = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(ab2).set(new Uint8Array(buffer));
+  return new Blob([ab2], { type: "audio/wav" });
 }
 
 function makeRawPCMBlob({ samples }: { samples: Float32Array }): Blob {
   const pcm = floatToPCM16(samples);
-  // Ensure ArrayBuffer is provided (slice guarantees ArrayBuffer type and exact length)
-  const ab = pcm.buffer.slice(0, pcm.byteLength);
+  // Create a fresh ArrayBuffer and copy to avoid ArrayBufferLike/SharedArrayBuffer typing
+  const ab = new ArrayBuffer(pcm.byteLength);
+  new Uint8Array(ab).set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
   return new Blob([ab], { type: "application/octet-stream" });
 }
 
