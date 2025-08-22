@@ -668,15 +668,23 @@ export default function EndpointConstrainedNoiseApp() {
             <input type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); }}
               className="text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-700 file:text-slate-100 file:hover:bg-slate-600 file:cursor-pointer" />
 
-            <div className="flex items-center gap-4 text-xs text-slate-300">
-              <label className="inline-flex items-center gap-2">
-                <input type="radio" className="accent-sky-500" checked={insertPos === 'front'} onChange={() => setInsertPos('front')} /> 앞에 추가
+            <div className="flex items-center gap-2 text-xs text-slate-300 flex-wrap">
+              <label className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 whitespace-nowrap">
+                <input type="radio" className="accent-sky-500" checked={insertPos === 'front'} onChange={() => setInsertPos('front')} />
+                <span>앞에 추가</span>
               </label>
-              <label className="inline-flex items-center gap-2">
-                <input type="radio" className="accent-sky-500" checked={insertPos === 'back'} onChange={() => setInsertPos('back')} /> 뒤에 추가
+              <label className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 whitespace-nowrap">
+                <input type="radio" className="accent-sky-500" checked={insertPos === 'back'} onChange={() => setInsertPos('back')} />
+                <span>뒤에 추가</span>
               </label>
             </div>
           </div>
+
+          {uploadInfo && sampleRate !== uploadInfo.sampleRate && (
+            <div className="text-[11px] text-amber-400 -mt-2">
+              상단 샘플레이트 설정({sampleRate.toLocaleString()} Hz)과 업로드 오디오({uploadInfo.sampleRate.toLocaleString()} Hz)가 다릅니다. 병합 시 노이즈는 업로드 오디오의 샘플레이트에 맞춰 생성/저장됩니다.
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <button onClick={appendNoiseToAudio} disabled={!uploaded}
@@ -692,7 +700,11 @@ export default function EndpointConstrainedNoiseApp() {
           </div>
 
           <p className="text-xs text-slate-500 leading-relaxed">
-            * 내보내기는 모노 16-bit PCM WAV로 저장됩니다. 브라우저 디코더의 샘플레이트(보통 48 kHz)가 적용될 수 있습니다.
+            * 내보내기는 모노 16-bit PCM WAV로 저장됩니다. 병합 결과의 샘플레이트는 업로드한 오디오의 샘플레이트와 동일합니다.
+          </p>
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            · 시간(ms) 모드: 업로드 오디오의 샘플레이트 기준으로 노이즈 길이를 산출합니다.<br />
+            · 샘플 수 모드: 입력한 샘플 수 그대로 병합됩니다.
           </p>
         </section>
 
