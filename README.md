@@ -8,6 +8,12 @@ Audio 묵음 구간을 0이 아닌, 들리지 않는 화이트 노이즈로 대�
 - Gaussian / Uniform 분포 선택, DC 제거 옵션, 시드 고정 지원
 - WAV(16-bit PCM) 다운로드 지원
 
+## Demo
+
+🎧 **[Live Demo](https://noise.huny.dev)**
+
+웹 브라우저에서 바로 사용해볼 수 있습니다.
+
 ## 실행
 
 ```bash
