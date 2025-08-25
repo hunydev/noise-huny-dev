@@ -719,7 +719,7 @@ export default function EndpointConstrainedNoiseApp() {
             <input type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); }}
               className="text-sm file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-slate-700 file:text-slate-100 file:hover:bg-slate-600 file:cursor-pointer" />
 
-            <div className="flex items-center gap-2 text-xs text-slate-300 flex-wrap">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
               <label className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 whitespace-nowrap">
                 <input type="radio" className="accent-sky-500" checked={insertPos === 'front'} onChange={() => setInsertPos('front')} />
                 <span>앞에 추가</span>

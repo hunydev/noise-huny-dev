@@ -13,10 +13,10 @@ h1 { font-size: 1.75rem; margin: 0 0 1rem; }
 section { background: color-mix(in oklab, canvas, canvastext 3%);
   padding: 1rem; border-radius: 12px; margin-bottom: 1rem; border: 1px solid color-mix(in oklab, canvastext 10%, canvas 90%);
 }
-label { display: block; margin: .5rem 0 .25rem; font-weight: 600; }
+label { margin: .5rem 0 .25rem; font-weight: 600; }
 input, select { width: 100%; padding: .5rem .6rem; border-radius: 8px; border: 1px solid color-mix(in oklab, canvastext 20%, canvas 80%); background: canvas; color: canvastext; }
 input[type="checkbox"] { width: auto; }
-.grid { display: grid; gap: .75rem; grid-template-columns: repeat(2, minmax(0,1fr)); }
+.grid { display: grid; }
 .grid-3 { display: grid; gap: .75rem; grid-template-columns: repeat(3, minmax(0,1fr)); }
 .row { display: flex; gap: .5rem; align-items: center; }
 button { cursor: pointer; border: 1px solid transparent; border-radius: 10px; padding: .55rem .9rem; font-weight: 600; }
@@ -27,3 +27,29 @@ button.ghost { background: transparent; border-color: color-mix(in oklab, canvas
 .badge { font-size: .8rem; padding: .2rem .5rem; border-radius: 999px; background: color-mix(in oklab, canvastext 10%, canvas 90%); }
 hr { border: none; height: 1px; background: color-mix(in oklab, canvastext 10%, canvas 90%); margin: 1rem 0; }
 .footer { margin-top: 1rem; font-size: .9rem; color: color-mix(in oklab, canvastext 40%, canvas 60%); }
+
+/* Minimal utility classes used by EndpointConstrainedNoiseApp */
+.flex { display: flex; }
+.inline-flex { display: inline-flex; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-col { flex-direction: column; }
+.gap-2 { gap: .5rem; }
+.gap-3 { gap: .75rem; }
+.gap-4 { gap: 1rem; }
+.whitespace-nowrap { white-space: nowrap; }
+
+/* Grid helpers + responsive behavior for two-panel layout */
+.grid { display: grid; }
+@media (min-width: 900px) {
+  .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .md\:flex-row { flex-direction: row; }
+  .md\:items-center { align-items: center; }
+}
+
+/* Prevent label text from breaking into multiple lines for short tags */
+label > span { white-space: nowrap; }
+
+/* Make file input compact so adjacent radios/buttons fit in one row */
+input[type="file"] { width: auto; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
