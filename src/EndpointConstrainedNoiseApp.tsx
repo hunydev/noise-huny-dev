@@ -312,6 +312,353 @@ export default function EndpointConstrainedNoiseApp() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const codeRef = useRef<HTMLElement | null>(null);
+
+  // Code examples (language tabs)
+  const [codeTab, setCodeTab] = useState<'c' | 'go' | 'py' | 'cs' | 'java' | 'js'>('js');
+  const codeMap = useMemo(() => {
+    const c = String.raw`// noise.c — pure C (C/C++에서 사용 가능)
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
+
+typedef struct { uint32_t s; } rng_t;
+static inline void rng_seed(rng_t* r, uint32_t seed) { r->s = seed ? seed : 123456789u; }
+static inline float rng_next_uniform(rng_t* r) {
+    r->s = (uint32_t)(1664525u * r->s + 1013904223u);
+    return (r->s >> 0) / 4294967296.0f;
+}
+static double gaussian(rng_t* r) {
+    double u, v, s;
+    do { u = 2.0 * rng_next_uniform(r) - 1.0; v = 2.0 * rng_next_uniform(r) - 1.0; s = u*u + v*v; }
+    while (s == 0.0 || s >= 1.0);
+    double mul = sqrt(-2.0 * log(s) / s);
+    return u * mul; // v*mul은 단순화를 위해 미사용
+}
+
+float* generate_white_noise_by_samples(int sample_rate, int samples, double rms_dbfs) {
+    if (samples < 2) samples = 2;
+    rng_t r; rng_seed(&r, 123456789u);
+    // 1) 가우시안
+    double* x = (double*)malloc(sizeof(double) * samples);
+    for (int i=0;i<samples;i++) x[i] = gaussian(&r);
+    // 2) 선형 성분 제거(엔드포인트 0)
+    double* y = (double*)malloc(sizeof(double) * samples);
+    double a = x[0], b = x[samples-1];
+    int den = samples - 1;
+    for (int i=0;i<samples;i++) {
+        double t = (double)i / (double)den;
+        double ramp = (1.0 - t)*a + t*b;
+        y[i] = x[i] - ramp;
+    }
+    // 3) RMS 스케일
+    double sum2 = 0.0; for (int i=0;i<samples;i++) sum2 += y[i]*y[i];
+    double rms = sqrt(sum2 / samples);
+    double target = pow(10.0, rms_dbfs / 20.0);
+    double g = (rms > 0.0 ? target / rms : 0.0);
+    float* out = (float*)malloc(sizeof(float) * samples);
+    for (int i=0;i<samples;i++) out[i] = (float)(y[i] * g);
+    free(x); free(y);
+    return out;
+}
+
+float* generate_white_noise_by_ms(int sample_rate, int duration_ms, double rms_dbfs) {
+    int samples = (int)((long long)sample_rate * duration_ms / 1000);
+    if (samples < 2) samples = 2;
+    return generate_white_noise_by_samples(sample_rate, samples, rms_dbfs);
+}
+
+int main(void) {
+    int sr = 48000, ms = 200; double db = -75.0;
+    int N = (sr * ms) / 1000; if (N < 2) N = 2;
+    float* y = generate_white_noise_by_ms(sr, ms, db);
+    printf("generated %d samples @ %d Hz, RMS target %.2f dBFS\n", N, sr, db);
+    printf("first=%.6f last=%.6f\n", y[0], y[N-1]);
+    free(y);
+    return 0;
+}`;
+
+    const go = String.raw`// noise.go — Go
+package main
+
+import (
+    "fmt"
+    "math"
+    "math/rand"
+    "time"
+)
+
+func gaussian() func() float64 {
+    // 간단한 박스-뮐러(폴라) 방식
+    return func() float64 {
+        for {
+            u := 2*rand.Float64() - 1
+            v := 2*rand.Float64() - 1
+            s := u*u + v*v
+            if s > 0 && s < 1 {
+                mul := math.Sqrt(-2 * math.Log(s) / s)
+                return u * mul
+            }
+        }
+    }
+}
+
+func generate_white_noise_by_samples(sampleRate, samples int, rmsDbfs float64) []float32 {
+    if samples < 2 { samples = 2 }
+    rand.Seed(time.Now().UnixNano())
+    gfn := gaussian()
+    x := make([]float64, samples)
+    for i := 0; i < samples; i++ { x[i] = gfn() }
+    y := make([]float64, samples)
+    a := x[0]; b := x[samples-1]; den := float64(samples-1)
+    for i := 0; i < samples; i++ {
+        t := float64(i)/den
+        ramp := (1-t)*a + t*b
+        y[i] = x[i] - ramp
+    }
+    var sum2 float64
+    for i := 0; i < samples; i++ { sum2 += y[i]*y[i] }
+    rms := math.Sqrt(sum2/float64(samples))
+    target := math.Pow(10, rmsDbfs/20)
+    gain := 0.0
+    if rms > 0 { gain = target / rms }
+    out := make([]float32, samples)
+    for i := 0; i < samples; i++ { out[i] = float32(y[i] * gain) }
+    return out
+}
+
+func generate_white_noise_by_ms(sampleRate, ms int, rmsDbfs float64) []float32 {
+    samples := sampleRate * ms / 1000
+    if samples < 2 { samples = 2 }
+    return generate_white_noise_by_samples(sampleRate, samples, rmsDbfs)
+}
+
+func main() {
+    sr, ms, db := 48000, 200, -75.0
+    y := generate_white_noise_by_ms(sr, ms, db)
+    fmt.Printf("generated %d samples @ %d Hz, RMS target %.2f dBFS\n", len(y), sr, db)
+    fmt.Printf("first=%.6f last=%.6f\n", y[0], y[len(y)-1])
+}`;
+
+const py = String.raw`# noise.py — Python (stdlib만 사용)
+import math, random
+
+def _gaussian():
+    while True:
+        u = 2.0*random.random() - 1.0
+        v = 2.0*random.random() - 1.0
+        s = u*u + v*v
+        if s > 0.0 and s < 1.0:
+            mul = math.sqrt(-2.0*math.log(s)/s)
+            return u*mul
+
+def generate_white_noise_by_samples(sample_rate: int, samples: int, rms_dbfs: float):
+    if samples < 2:
+        samples = 2
+    x = [_gaussian() for _ in range(samples)]
+    a, b = x[0], x[-1]
+    den = samples - 1
+    y = []
+    for i in range(samples):
+        t = i/den
+        ramp = (1.0 - t)*a + t*b
+        y.append(x[i] - ramp)
+    sum2 = sum(v*v for v in y)
+    rms = math.sqrt(sum2/len(y)) if len(y) > 0 else 0.0
+    target = 10**(rms_dbfs/20.0)
+    gain = (target/rms) if rms > 0 else 0.0
+    return [float(v*gain) for v in y]
+
+def generate_white_noise_by_ms(sample_rate: int, ms: int, rms_dbfs: float):
+    samples = max(2, (sample_rate * ms)//1000)
+    return generate_white_noise_by_samples(sample_rate, samples, rms_dbfs)
+
+def main():
+    sr, ms, db = 48000, 200, -75.0
+    y = generate_white_noise_by_ms(sr, ms, db)
+    print("generated " + str(len(y)) + " samples @ " + str(sr) + " Hz, RMS target " + str(db) + " dBFS")
+    print("first=" + str(y[0]) + " last=" + str(y[-1]))
+
+if __name__ == "__main__":
+    main()`;
+
+const cs = String.raw`// Program.cs — C# (net7.0 등)
+using System;
+
+static class Noise {
+    static readonly Random rng = new Random(123456789);
+    static double Gaussian() {
+        while (true) {
+            double u = 2.0*rng.NextDouble() - 1.0;
+            double v = 2.0*rng.NextDouble() - 1.0;
+            double s = u*u + v*v;
+            if (s > 0.0 && s < 1.0) {
+                double mul = Math.Sqrt(-2.0 * Math.Log(s) / s);
+                return u * mul;
+            }
+        }
+    }
+    public static float[] GenerateWhiteNoiseBySamples(int sampleRate, int samples, double rmsDbfs) {
+        if (samples < 2) samples = 2;
+        double[] x = new double[samples];
+        for (int i=0;i<samples;i++) x[i] = Gaussian();
+        double[] y = new double[samples];
+        double a = x[0], b = x[samples-1];
+        int den = samples - 1;
+        for (int i=0;i<samples;i++) {
+            double t = (double)i/den;
+            double ramp = (1.0 - t)*a + t*b;
+            y[i] = x[i] - ramp;
+        }
+        double sum2 = 0.0; for (int i=0;i<samples;i++) sum2 += y[i]*y[i];
+        double rms = Math.Sqrt(sum2/samples);
+        double target = Math.Pow(10.0, rmsDbfs/20.0);
+        double g = (rms > 0.0 ? target / rms : 0.0);
+        float[] outArr = new float[samples];
+        for (int i=0;i<samples;i++) outArr[i] = (float)(y[i]*g);
+        return outArr;
+    }
+    public static float[] GenerateWhiteNoiseByMs(int sampleRate, int ms, double rmsDbfs) {
+        int samples = Math.Max(2, sampleRate * ms / 1000);
+        return GenerateWhiteNoiseBySamples(sampleRate, samples, rmsDbfs);
+    }
+}
+
+class Program {
+    static void Main() {
+        int sr = 48000, ms = 200; double db = -75.0;
+        var y = Noise.GenerateWhiteNoiseByMs(sr, ms, db);
+        Console.WriteLine($"generated {y.Length} samples @ {sr} Hz, RMS target {db:F2} dBFS");
+        Console.WriteLine($"first={y[0]:F6} last={y[y.Length-1]:F6}");
+    }
+}`;
+
+    const java = String.raw`// Noise.java — Java
+import java.util.*;
+
+public class Noise {
+    static Random rng = new Random(123456789L);
+    static double gaussian() {
+        while (true) {
+            double u = 2.0*rng.nextDouble() - 1.0;
+            double v = 2.0*rng.nextDouble() - 1.0;
+            double s = u*u + v*v;
+            if (s > 0.0 && s < 1.0) {
+                double mul = Math.sqrt(-2.0 * Math.log(s) / s);
+                return u * mul;
+            }
+        }
+    }
+    static float[] generate_white_noise_by_samples(int sampleRate, int samples, double rmsDbfs) {
+        if (samples < 2) samples = 2;
+        double[] x = new double[samples];
+        for (int i=0;i<samples;i++) x[i] = gaussian();
+        double[] y = new double[samples];
+        double a = x[0], b = x[samples-1];
+        int den = samples - 1;
+        for (int i=0;i<samples;i++) {
+            double t = (double)i/den;
+            double ramp = (1.0 - t)*a + t*b;
+            y[i] = x[i] - ramp;
+        }
+        double sum2 = 0.0; for (int i=0;i<samples;i++) sum2 += y[i]*y[i];
+        double rms = Math.sqrt(sum2/samples);
+        double target = Math.pow(10.0, rmsDbfs/20.0);
+        double g = (rms > 0.0 ? target / rms : 0.0);
+        float[] outArr = new float[samples];
+        for (int i=0;i<samples;i++) outArr[i] = (float)(y[i]*g);
+        return outArr;
+    }
+    static float[] generate_white_noise_by_ms(int sampleRate, int ms, double rmsDbfs) {
+        int samples = Math.max(2, sampleRate * ms / 1000);
+        return generate_white_noise_by_samples(sampleRate, samples, rmsDbfs);
+    }
+    public static void main(String[] args) {
+        int sr = 48000, ms = 200; double db = -75.0;
+        float[] y = generate_white_noise_by_ms(sr, ms, db);
+        System.out.printf("generated %d samples @ %d Hz, RMS target %.2f dBFS\n", y.length, sr, db);
+        System.out.printf("first=%.6f last=%.6f\n", y[0], y[y.length-1]);
+    }
+}
+`;
+
+    const js = String.raw`// noise.js — JS(Node/Browser 공통)
+function gaussian() {
+  while (true) {
+    const u = 2*Math.random() - 1;
+    const v = 2*Math.random() - 1;
+    const s = u*u + v*v;
+    if (s > 0 && s < 1) {
+      const mul = Math.sqrt(-2*Math.log(s)/s);
+      return u * mul;
+    }
+  }
+}
+
+function generate_white_noise_by_samples(sampleRate, samples, rmsDbfs) {
+  samples = Math.max(2, samples|0);
+  const x = new Float64Array(samples);
+  for (let i=0;i<samples;i++) x[i] = gaussian();
+  const y = new Float64Array(samples);
+  const a = x[0], b = x[samples-1];
+  const den = samples - 1;
+  for (let i=0;i<samples;i++) {
+    const t = i/den; const ramp = (1-t)*a + t*b; y[i] = x[i] - ramp;
+  }
+  let sum2 = 0; for (let i=0;i<samples;i++) sum2 += y[i]*y[i];
+  const rms = Math.sqrt(sum2/samples) || 0;
+  const target = Math.pow(10, rmsDbfs/20);
+  const g = rms > 0 ? target / rms : 0;
+  const out = new Float32Array(samples);
+  for (let i=0;i<samples;i++) out[i] = y[i] * g;
+  return out;
+}
+
+function generate_white_noise_by_ms(sampleRate, ms, rmsDbfs) {
+  const samples = Math.max(2, Math.round(sampleRate * ms / 1000));
+  return generate_white_noise_by_samples(sampleRate, samples, rmsDbfs);
+}
+
+function main() {
+  const sr = 48000, ms = 200, db = -75.0;
+  const y = generate_white_noise_by_ms(sr, ms, db);
+  console.log('generated ' + y.length + ' samples @ ' + sr + ' Hz, RMS target ' + db.toFixed(2) + ' dBFS');
+  console.log('first=' + y[0].toFixed(6) + ' last=' + y[y.length-1].toFixed(6));
+}
+
+if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+  main();
+}
+
+// 브라우저에서는 위 함수들을 그대로 import/사용하세요.`;
+
+    return { c, go, py, cs, java, js } as const;
+  }, []);
+
+  // Prism.js syntax highlighting for code examples
+  const codeLangClass = useMemo(() => ({
+    c: 'language-c',
+    go: 'language-go',
+    py: 'language-python',
+    cs: 'language-csharp',
+    java: 'language-java',
+    js: 'language-javascript',
+  }[codeTab]), [codeTab]);
+
+  useEffect(() => {
+    const Prism: any = (window as any).Prism;
+    if (!Prism) return;
+    try {
+      if (typeof Prism.highlightAllUnder === 'function') {
+        Prism.highlightAllUnder(document);
+      } else if (typeof Prism.highlightAll === 'function') {
+        Prism.highlightAll();
+      } else if (codeRef.current && typeof Prism.highlightElement === 'function') {
+        Prism.highlightElement(codeRef.current);
+      }
+    } catch {}
+  }, [codeTab, codeMap]);
 
   // Canvas resize
   useEffect(() => {
@@ -757,6 +1104,29 @@ export default function EndpointConstrainedNoiseApp() {
             · 시간(ms) 모드: 업로드 오디오의 샘플레이트 기준으로 노이즈 길이를 산출합니다.<br />
             · 샘플 수 모드: 입력한 샘플 수 그대로 병합됩니다.
           </p>
+        </section>
+
+        {/* Code Examples Panel */}
+        <section className="mt-4 space-y-3 p-4 rounded-2xl bg-slate-900 shadow">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-slate-300">언어별 코드 예제</div>
+            <div className="flex gap-2 text-xs">
+              {([
+                ['c','C'], ['go','Go'], ['py','Python'], ['cs','C#'], ['java','Java'], ['js','JS']
+              ] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setCodeTab(k)}
+                  className={(codeTab===k ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-200 hover:bg-slate-700') + ' px-3 py-1.5 rounded-lg transition'}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-[11px] text-slate-500">
+            함수명 규칙: generate_white_noise_by_ms / generate_white_noise_by_samples (오버로드 미사용). 메인 함수 포함, 바로 실행/테스트 가능.
+          </div>
+
+          <pre className="line-numbers font-mono bg-slate-800 text-slate-100 text-xs md:text-sm rounded-xl p-3 overflow-auto max-h-96"><code ref={codeRef} className={codeLangClass}>{codeMap[codeTab]}</code></pre>
         </section>
 
         <footer className="text-xs text-slate-500 pt-2">
