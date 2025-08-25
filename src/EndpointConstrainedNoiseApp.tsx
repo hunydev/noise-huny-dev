@@ -215,6 +215,24 @@ function drawWaveform(canvas: HTMLCanvasElement | null, samples: Float32Array | 
   ctx.stroke();
 }
 
+function drawPlayhead(canvas: HTMLCanvasElement | null, progress: number) {
+  if (!canvas || !Number.isFinite(progress)) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const W = canvas.width;
+  const H = canvas.height;
+  const clampP = Math.min(1, Math.max(0, progress));
+  const x = Math.round(clampP * W) + 0.5;
+  ctx.save();
+  ctx.strokeStyle = "#f43f5e"; // rose-500
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x, 0);
+  ctx.lineTo(x, H);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // ========== Self Tests ==========
 function approxEqual(a: number, b: number, tol: number) { return Math.abs(a - b) <= tol; }
 function toDBFS(rms: number) { return 20 * Math.log10(Math.max(rms, 1e-20)); }
@@ -296,6 +314,10 @@ export default function EndpointConstrainedNoiseApp() {
   const [monitorGainDB, setMonitorGainDB] = useState<number>(0);
   const [playing, setPlaying] = useState<boolean>(false);
   const [loop, setLoop] = useState<boolean>(false);
+  const loopRef = useRef<boolean>(false);
+  const playStartTimeRef = useRef<number | null>(null);
+  const playDurSecRef = useRef<number>(0);
+  const rafRef = useRef<number | null>(null);
 
   // Upload & merge
   const [uploaded, setUploaded] = useState<{ buffer: AudioBuffer; name: string } | null>(null);
@@ -670,7 +692,20 @@ if (typeof process !== 'undefined' && process.versions && process.versions.node)
       const rect = el.getBoundingClientRect();
       canvas.width = Math.max(320, Math.floor(rect.width));
       canvas.height = 220;
+      // On resize, render waveform and current playhead (if any)
       drawWaveform(canvas, generated, { normalize: normalizeView });
+      if (playing && audioCtxRef.current && playStartTimeRef.current != null && (generated?.length || 0) > 0) {
+        const dur = playDurSecRef.current || ((generated?.length || 0) / sampleRate);
+        const t = audioCtxRef.current.currentTime - playStartTimeRef.current;
+        let p = t / dur;
+        if (loopRef.current) {
+          const mod = ((t % dur) + dur) % dur;
+          p = mod / dur;
+        } else {
+          p = Math.min(1, Math.max(0, p));
+        }
+        drawPlayhead(canvas, p);
+      }
     };
     resize();
     let ro: ResizeObserver | undefined;
@@ -688,8 +723,26 @@ if (typeof process !== 'undefined' && process.versions && process.versions.node)
 
   // Redraw on toggle
   useEffect(() => {
-    drawWaveform(canvasRef.current, generated, { normalize: normalizeView });
+    const canvas = canvasRef.current;
+    drawWaveform(canvas, generated, { normalize: normalizeView });
+    if (playing && audioCtxRef.current && playStartTimeRef.current != null && (generated?.length || 0) > 0) {
+      const dur = playDurSecRef.current || ((generated?.length || 0) / sampleRate);
+      const t = audioCtxRef.current.currentTime - playStartTimeRef.current;
+      let p = t / dur;
+      if (loopRef.current) {
+        const mod = ((t % dur) + dur) % dur;
+        p = mod / dur;
+      } else {
+        p = Math.min(1, Math.max(0, p));
+      }
+      drawPlayhead(canvas, p);
+    }
   }, [generated, normalizeView]);
+
+  // cleanup RAF on unmount
+  useEffect(() => () => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+  }, []);
 
   // Revoke blob URLs on unmount/change
   useEffect(() => () => {
@@ -744,6 +797,14 @@ if (typeof process !== 'undefined' && process.versions && process.versions.node)
       srcRef.current = null;
     }
     setPlaying(false);
+    // stop animation
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    playStartTimeRef.current = null;
+    // clear playhead by redrawing only waveform
+    drawWaveform(canvasRef.current, generated, { normalize: normalizeView });
   }
   function togglePlay() {
     if (!generated || generated.length === 0) return;
@@ -756,13 +817,66 @@ if (typeof process !== 'undefined' && process.versions && process.versions.node)
     buffer.getChannelData(0).set(generated);
     const src = ctx.createBufferSource();
     src.buffer = buffer; src.loop = loop; src.connect(gain);
-    src.onended = () => setPlaying(false);
+    src.onended = () => {
+      setPlaying(false);
+      if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      playStartTimeRef.current = null;
+      // clear playhead
+      drawWaveform(canvasRef.current, generated, { normalize: normalizeView });
+    };
     src.start();
     srcRef.current = src; setPlaying(true);
+    // playback timing & animation
+    playStartTimeRef.current = ctx.currentTime;
+    playDurSecRef.current = generated.length / sampleRate;
+    if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    const tick = () => {
+      // redraw waveform + playhead
+      const canvas = canvasRef.current;
+      drawWaveform(canvas, generated, { normalize: normalizeView });
+      if (canvas && audioCtxRef.current && playStartTimeRef.current != null && playDurSecRef.current > 0) {
+        const t = audioCtxRef.current.currentTime - playStartTimeRef.current;
+        const dur = playDurSecRef.current;
+        let p = t / dur;
+        if (loopRef.current) {
+          const mod = ((t % dur) + dur) % dur; // safe modulo
+          p = mod / dur;
+        } else {
+          p = Math.min(1, Math.max(0, p));
+        }
+        drawPlayhead(canvas, p);
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
   }
   useEffect(() => {
     if (gainNodeRef.current) gainNodeRef.current.gain.value = Math.pow(10, monitorGainDB / 20);
   }, [monitorGainDB]);
+
+  // keep loop latest for RAF loop
+  useEffect(() => { loopRef.current = loop; }, [loop]);
+
+  // keep AudioBufferSourceNode.loop in sync if toggled during playback
+  useEffect(() => {
+    if (srcRef.current) {
+      srcRef.current.loop = loop;
+    }
+  }, [loop]);
+
+  // stop playback if buffer or sample rate changes to avoid desync
+  useEffect(() => {
+    if (playing) {
+      stopPlayback();
+    }
+  }, [generated, sampleRate]);
+
+  // when playback stops, ensure canvas shows clean waveform (no playhead)
+  useEffect(() => {
+    if (!playing) {
+      drawWaveform(canvasRef.current, generated, { normalize: normalizeView });
+    }
+  }, [playing, generated, normalizeView]);
 
   // Downloads
   function createDownload(kind: 'wav' | 'pcm') {
